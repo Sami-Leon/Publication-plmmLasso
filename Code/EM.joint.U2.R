@@ -2,7 +2,6 @@ library("glmnet")
 library("MASS")
 library("selectiveInference")
 library("hdi")
-source("lasso_inference.r")
 
 criteria <- function(name, out.EM, data, logLik, nonpara = F) {
   ntot <- nrow(data)
@@ -202,8 +201,7 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
 }
 
 EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, intercept,
-                     lambda.grid, timexgroup, SimData = NULL, tol.EM = 0.001,
-                     posi = TRUE) {
+                     lambda.grid, timexgroup, SimData = NULL, tol.EM = 0.001) {
   fixed_effects <- ifelse(is.null(X), FALSE, TRUE)
 
   Data <- as.data.frame(cbind(Y, series, position, X))
@@ -376,134 +374,9 @@ EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, inter
   hyper.parameters <- data.frame(lambda.grid = lambda.grid, gam.cste = gam.cste)
   converged <- ifelse(Iter >= maxIter, F, T)
   
-  if(posi) {
-    out.Data <- Residuals.before.F.gen(Data, U2, ni, fixed_effects)
-    
-    y.debias <- scale(out.Data$Y - Res.F$out.F$F.fit)
-    x.debias <- scale(as.matrix(X))
-    
-    x.debias.mean <- attr(x.debias, "scaled:center")
-    x.debias.sd <- attr(x.debias, "scaled:scale")
-    y.debias.mean <- attr(y.debias, "scaled:center")
-    y.debias.sd <- attr(y.debias, "scaled:scale")
-    
-    gfit <- glmnet::glmnet(x.debias,
-                           y.debias,
-                           alpha = 1, lambda = lambda.grid,
-                           standardize = FALSE,
-                           intercept = TRUE, thresh = 1e-20
-    )
-    
-    lasso.test <- as.vector(coef(gfit))
-    
-    SSLasso.out <- SSLasso(
-      X = x.debias, y = y.debias,
-      theta = lasso.test, alpha = 0.05, lambda = lambda.grid,
-      mu = NULL, resol = 1.3, maxiter = 50,
-      threshold = 1e-2, verbose = F
-    )
-    
-    SSLasso.out$low.lim <- SSLasso.out$low.lim * (y.debias.sd / x.debias.sd)
-    SSLasso.out$up.lim <- SSLasso.out$up.lim * (y.debias.sd / x.debias.sd)
-    
-    Res.F$debias <- list(
-      ci = cbind(SSLasso.out$low.lim, SSLasso.out$up.lim),
-      pv = SSLasso.out$pvals
-    )
-    
-    beta <- coef(gfit,
-                 x = x.debias, y = y.debias, s = lambda.grid / length(y.debias),
-                 exact = TRUE
-    )[-1]
-    
-    # compute fixed lambda p-values and selection intervals
-    out <- fixedLassoInf(x.debias, y.debias, beta, lambda.grid,
-                         sigma = sqrt(se),
-                         alpha = 0.05
-    )
-    
-    nonzero <- names(x.debias.sd) %in% names(out$vars)
-    
-    out$ci[, 1] <- out$ci[, 1] * (y.debias.sd / x.debias.sd[nonzero])
-    out$ci[, 2] <- out$ci[, 2] * (y.debias.sd / x.debias.sd[nonzero])
-    
-    ci.low <- rep(0, length(x.debias.sd))
-    ci.low[nonzero] <- out$ci[, 1]
-    
-    ci.up <- rep(0, length(x.debias.sd))
-    ci.up[nonzero] <- out$ci[, 2]
-    
-    SI.ci <- cbind(ci.low, ci.up)
-    
-    SI.pv <- rep(1, length(x.debias.sd))
-    SI.pv[nonzero] <- out$pv
-    
-    Res.F$SI <- list(ci = SI.ci, pv = SI.pv)
-    
-    de.sparsified <- lasso.proj(x.debias, y.debias,
-                                sigma = sqrt(se),
-                                suppress.grouptesting = TRUE, do.ZnZ = T,
-                                betainit = lasso.test[-1]
-    )
-    de.sparsified.ci <- confint(de.sparsified, level = 0.95)
-    de.sparsified.ci <- cbind(
-      de.sparsified.ci[, 1] * (y.debias.sd / x.debias.sd),
-      de.sparsified.ci[, 2] * (y.debias.sd / x.debias.sd)
-    )
-    
-    Res.F$de.sparsified <- list(
-      ci = de.sparsified.ci,
-      pv = de.sparsified$pval
-    )
-    
-    Z <- model.matrix(~ 0 + factor(series), Data)
-    logLik <- mvtnorm::dmvnorm(
-      x = Data$Y,
-      mean = as.vector(Res.F$X.fit) + Res.F$out.F$F.fit,
-      sigma = diag(nrow(Z)) * se + su * Z %*% t(Z), log = T
-    )
-    
-    BIC <- criteria(
-      name = "BIC", out.EM = Res.F, data = Data,
-      logLik = logLik, nonpara = F
-    )
-    BIC.nonpara <- criteria(
-      name = "BIC", out.EM = Res.F, data = Data,
-      logLik = logLik, nonpara = T
-    )
-    BICC <- criteria(
-      name = "BICC", out.EM = Res.F, data = Data,
-      logLik = logLik, nonpara = F
-    )
-    BICC.nonpara <- criteria(
-      name = "BICC", out.EM = Res.F, data = Data,
-      logLik = logLik, nonpara = T
-    )
-    EBIC <- criteria(
-      name = "EBIC", out.EM = Res.F, data = Data, logLik =
-        logLik, nonpara = F
-    )
-    EBIC.nonpara <- criteria(
-      name = "EBIC", out.EM = Res.F, data = Data,
-      logLik = logLik, nonpara = T
-    )
-    
-    
-    return(list(
-      Res.F = Res.F, se = se, su = su, U2 = U2, ni = ni,
-      theta.MSE = theta.MSE, F.fit.MSE = F.fit.MSE, U2.MSE = U2.MSE,
-      overall.MSE = overall.MSE, delta.EM = delta.EM.iter,
-      hyper.parameters = hyper.parameters,
-      converged = converged, BIC = BIC,
-      BIC.nonpara = BIC.nonpara, BICC = BICC, BICC.nonpara = BICC.nonpara,
-      EBIC = EBIC, EBIC.nonpara = EBIC.nonpara
-    ))
-  } else {
-    return(list(
+  return(list(
       Res.F = Res.F, se = se, su = su, U2 = U2, ni = ni, delta.EM = delta.EM.iter,
       hyper.parameters = hyper.parameters, converged = converged
     ))
-  }
-  
   
 }
