@@ -1,8 +1,3 @@
-library("glmnet")
-library("MASS")
-library("selectiveInference")
-library("hdi")
-
 criteria <- function(name, out.EM, data, logLik, nonpara = F) {
   ntot <- nrow(data)
   k <- sum(out.EM$theta != 0)
@@ -200,8 +195,8 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
   ))
 }
 
-EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, intercept,
-                     lambda.grid, timexgroup, SimData = NULL, tol.EM = 0.001) {
+EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercept,
+                     lambda.grid, timexgroup, tol.EM = 0.001) {
   fixed_effects <- ifelse(is.null(X), FALSE, TRUE)
 
   Data <- as.data.frame(cbind(Y, series, position, X))
@@ -340,18 +335,6 @@ EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, inter
     theta.tmp[2] <- theta.tmp[2] + (mean.1.tmp - mean.0.tmp)
     theta.tmp[1] <- theta.tmp[1] + mean.0.tmp
 
-    if (is.null(SimData)) {
-      theta.MSE <- NULL
-      F.fit.MSE <- NULL
-      U2.MSE <- NULL
-      overall.MSE <- NULL
-    } else {
-      theta.MSE[Iter] <- mean((c(0, 3, 2, 1, rep(0, length(theta.tmp) - 4)) - theta.tmp)^2)
-      F.fit.MSE[Iter] <- mean((SimData[[3]] - out.F.tmp$F.fit)^2)
-      U2.MSE[Iter] <- mean((SimData[[2]] - rep(U2$U2, ni))^2)
-      overall.MSE[Iter] <- sum(theta.MSE[Iter] + F.fit.MSE[Iter] + U2.MSE[Iter])
-    }
-
     cat("Iter ", Iter, delta.EM, delta.F, delta.theta, delta.se, delta.su, "\n")
 
     delta.EM.iter[Iter] <- delta.EM
@@ -373,10 +356,43 @@ EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, inter
 
   hyper.parameters <- data.frame(lambda.grid = lambda.grid, gam.cste = gam.cste)
   converged <- ifelse(Iter >= maxIter, F, T)
-  
+
+  Z <- model.matrix(~ 0 + factor(series), Data)
+  logLik <- mvtnorm::dmvnorm(
+    x = Data$Y,
+    mean = as.vector(Res.F$X.fit) + Res.F$out.F$F.fit,
+    sigma = diag(nrow(Z)) * se + su * Z %*% t(Z), log = T
+  )
+
+  BIC <- criteria(
+    name = "BIC", out.EM = Res.F, data = Data,
+    logLik = logLik, nonpara = F
+  )
+  BIC.nonpara <- criteria(
+    name = "BIC", out.EM = Res.F, data = Data,
+    logLik = logLik, nonpara = T
+  )
+  BICC <- criteria(
+    name = "BICC", out.EM = Res.F, data = Data,
+    logLik = logLik, nonpara = F
+  )
+  BICC.nonpara <- criteria(
+    name = "BICC", out.EM = Res.F, data = Data,
+    logLik = logLik, nonpara = T
+  )
+  EBIC <- criteria(
+    name = "EBIC", out.EM = Res.F, data = Data, logLik =
+      logLik, nonpara = F
+  )
+  EBIC.nonpara <- criteria(
+    name = "EBIC", out.EM = Res.F, data = Data,
+    logLik = logLik, nonpara = T
+  )
+
   return(list(
-      Res.F = Res.F, se = se, su = su, U2 = U2, ni = ni, delta.EM = delta.EM.iter,
-      hyper.parameters = hyper.parameters, converged = converged
-    ))
-  
+    Res.F = Res.F, se = se, su = su, U2 = U2, ni = ni, delta.EM = delta.EM.iter,
+    hyper.parameters = hyper.parameters, converged = converged, BIC = BIC,
+    BIC.nonpara = BIC.nonpara, BICC = BICC, BICC.nonpara = BICC.nonpara,
+    EBIC = EBIC, EBIC.nonpara = EBIC.nonpara
+  ))
 }
