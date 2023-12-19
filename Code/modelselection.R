@@ -14,7 +14,7 @@ select.plmm <- function(data, gamma, lambda, crit, intercept = T, timexgroup = T
 
     start_time <- Sys.time()
 
-    list.MixteNonPara[[i]] <- EM.joint(
+    list.MixteNonPara[[i]] <- plmmlasso(
       Y = data$Y, series = data$series, position = data$position,
       X = subset(data, select = -c(Y, series, position)),
       F.Bases = F.Bases.norm, gam.cste = gamma.i, intercept = intercept,
