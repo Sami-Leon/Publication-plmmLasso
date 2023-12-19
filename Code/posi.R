@@ -1,4 +1,4 @@
-library(hdi)
+library(dplyr)
 
 de.sparsified.PLMM <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
   data.lmm <- simu
@@ -25,7 +25,7 @@ de.sparsified.PLMM <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
       sample(names(model$Res.F$theta[-1][model$Res.F$theta[-1] == 0]), 5)
     )]
     
-    de.sparsified.sl <- lasso.proj(X.a, y.a,
+    de.sparsified.sl <- hdi::lasso.proj(X.a, y.a,
                                    suppress.grouptesting = TRUE, return.Z = T,
                                    do.ZnZ = T, betainit = "scaled lasso"
     )
