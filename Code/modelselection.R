@@ -1,31 +1,37 @@
-source("EM.joint.U2.R") 
+source("plmmlasso.R")
+source("CreateBases.R")
 
-lambda.grid <- round(exp(seq(log(0.1), log(1 * 0.0001),
-                             length.out = 10
-)), digits = 4)
+select.plmm <- function(data, gamma, lambda, crit, intercept = T, timexgroup = T) {
+  grid.param <- expand.grid(lambda, gamma)
+  list.MixteNonPara <- list()
 
-gamma.grid <- c(
-  0.000001, 0.0000001, 0.00000001, 0.000000001
-)
+  Dico.norm <- CreationBases(data$position)
+  F.Bases.norm <- Dico.norm$F.Bases
 
+  for (i in 1:nrow(grid.param)) {
+    lambda.i <- grid.param[i, ][[1]]
+    gamma.i <- grid.param[i, ][[2]]
 
-grid.param = expand.grid(lambda.grid, gamma.grid)
+    start_time <- Sys.time()
 
-# To minimize runtime, run this code in parallel
-for (i in 1:nrow(grid.param)) {
-  
-  lambda = grid.param[i,][[1]]
-  gam.cste = grid.param[i,][[2]]
+    list.MixteNonPara[[i]] <- EM.joint(
+      Y = data$Y, series = data$series, position = data$position,
+      X = subset(data, select = -c(Y, series, position)),
+      F.Bases = F.Bases.norm, gam.cste = gamma.i, intercept = intercept,
+      lambda.grid = lambda.i, timexgroup = timexgroup
+    )
 
-  start_time <- Sys.time()
-  
-  list.MixteNonPara = EM.joint(Y = Group1$Y, series = Group1$series, position = Group1$position,
-                               X = subset(Group1, select = -c(Y, series, position)),
-                               F.Bases = F.Bases.norm, gam.cste = gam.cste, intercept = T,
-                               lambda.grid = lambda, timexgroup = T)
-  
-  end_time <- Sys.time()
-  
-  list.MixteNonPara$time = difftime(end_time, start_time, units = "secs")
+    end_time <- Sys.time()
 
+    list.MixteNonPara[[i]]$time <- difftime(end_time, start_time, units = "secs")
+  }
+
+  list.MixteNonPara <- list.MixteNonPara[unlist(lapply(
+    list.MixteNonPara,
+    function(x) x$converged
+  ))]
+
+  best.lpmm <- which.min(unlist(lapply(list.MixteNonPara, function(x) x[crit])))
+
+  return(list.MixteNonPara[[best.lpmm]])
 }
