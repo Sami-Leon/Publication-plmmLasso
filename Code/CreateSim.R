@@ -101,6 +101,20 @@ simulate_group_inter <- function(N = 50, n.mvnorm = 100, grouped = T, seed,
   return(list(Group1, phi, f.val))
 }
 
+f.hat.old = function(t, coef, group, keep = NULL) {
+  
+  F.Bases = CreationBases(t, keep = keep)$F.Bases
+  
+  if(group == 0) {
+    coef = coef[1:ncol(F.Bases)]
+  } else {
+    coef = coef[(ncol(F.Bases)+1):length(coef)]
+  }
+  
+  return(F.Bases %*% coef)
+  
+}
+
 plot.fit <- function(list.EM.out, data, same = FALSE) {
   EM.out <- list.EM.out
 
