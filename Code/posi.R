@@ -1,6 +1,6 @@
 library(dplyr)
 
-de.sparsified.PLMM <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
+debias.plmm <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
   data.lmm <- simu
   data.lmm$Y <- data.lmm$Y - model$Res.F$out.F$F.fit
   
