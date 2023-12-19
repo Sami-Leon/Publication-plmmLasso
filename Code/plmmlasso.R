@@ -195,7 +195,7 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
   ))
 }
 
-EM.joint <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercept,
+plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercept,
                      lambda.grid, timexgroup, tol.EM = 0.001) {
   fixed_effects <- ifelse(is.null(X), FALSE, TRUE)
 
