@@ -26,7 +26,7 @@ fit.plmm <- select.plmm(
 plot.fit(fit.plmm, data.sim)
 
 # Get debiased fixed-effects and pvalues
-posi = de.sparsified.PLMM(simu = data.sim[[1]], model = fit.plmm)
+posi = debias.plmm(simu = data.sim[[1]], model = fit.plmm)
 
 # Format post-selection inference output
 df.posi = cbind(posi$beta.hat, posi$bhat, posi$ci, posi$pv)
