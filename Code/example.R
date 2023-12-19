@@ -1,7 +1,7 @@
 source("CreateSim.R")
 source("modelselection.R")
 source("posi.R")
-source("test.functions.R")
+source("test.nonlinear.functions.R")
 
 # Generating simulated dataset
 data.sim = simulate_group_inter(N = 100, n.mvnorm = 100, grouped = T,
