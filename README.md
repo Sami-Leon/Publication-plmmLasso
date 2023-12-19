@@ -1,4 +1,4 @@
-# plmmLasso: Variable selection and Inference for Partial Linear Mixed-Effects 
+# plmmlasso: Variable Selection and Inference for Partial Linear Mixed-Effects 
 
 Welcome to the repository containing the implementation of a Partial Linear Mixed-Effects (PLMM) algorithm designed for longitudinal data analysis. This method allows for modeling nonlinear functions within a mixed-effects framework. Below are the key components of this repository:
 
