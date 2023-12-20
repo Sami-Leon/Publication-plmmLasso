@@ -27,11 +27,7 @@ plot.fit(fit.plmm, data.sim)
 
 # Get debiased fixed-effects and pvalues
 posi = debias.plmm(simu = data.sim[[1]], model = fit.plmm)
-
-# Format post-selection inference output
-df.posi = cbind(posi$beta.hat, posi$bhat, posi$ci, posi$pv)
-colnames(df.posi) = c("Estimate", "Debiased", "CI lower", "CI upper", "p-value")
-head(df.posi)
+posi
 
 # Inference for the nonlinear functions
 test.nonlinear.functions = f.test(data.sim[[1]], fit.plmm, n = 1000)
@@ -41,3 +37,4 @@ test.nonlinear.functions[[1]]
 
 # Continuous joint confidence bands for the difference between f1 and f2
 test.nonlinear.functions[[3]]
+
