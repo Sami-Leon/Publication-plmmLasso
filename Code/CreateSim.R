@@ -56,7 +56,7 @@ simulate_group_inter <- function(N = 50, n.mvnorm = 100, grouped = T, seed,
 
     X1 <- rep(rnorm(1, 1, sqrt(0.5)), ni)
 
-    eps <- rnorm(ni, 0, sqrt(0.05))
+    eps <- rnorm(ni, 0, sqrt(0.2))
 
     t <- sort(sample(sample_from, ni, replace = F))
 
