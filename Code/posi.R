@@ -1,5 +1,54 @@
 library(dplyr)
 
+roundpval <- function(pvalue) {
+  pvalue <- as.numeric(as.character(pvalue))
+  pvareturn <- rep(NA, length(pvalue))
+  
+  if (!(all(pvalue <= 1 & pvalue >= 0))) {
+    warning("At least one p-value is not in the 0, 1 interval")
+  }
+  
+  for (i in 1:length(pvalue)) {
+    pva <- pvalue[i]
+    if (is.na(pva)) {
+      pvareturn[i] <- NA
+    } else {
+      if (pva >= 0.06) {
+        pvareturn[i] <- as.character(format(round(pva, digits = 2),
+                                            nsmall = 2))
+      } else {
+        if (pva < 0.06 & pva >= 0.04) {
+          pvareturn[i] <- as.character(format(round(pva, digits = 3),
+                                              nsmall = 3))
+        } else {
+          if (pva < 0.04 & pva >= 0.01) {
+            pvareturn[i] <- as.character(format(round(pva, digits = 2),
+                                                nsmall = 2))
+          } else {
+            if (pva < 0.01 & pva >= 0.001) {
+              pvareturn[i] <-
+                as.character(format(round(pva, digits = 3),
+                                    nsmall = 3))
+            } else {
+              if (pva < 0.001 & pva >= 0.0001) {
+                pvareturn[i] <-
+                  as.character(format(round(pva, digits = 4),
+                                      nsmall = 4,
+                                      scientific = FALSE))
+              } else {
+                if (pva < 0.0001) {
+                  pvareturn[i] <- "$<0.0001$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return(pvareturn)
+}
+
 debias.plmm <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
   data.lmm <- simu
   data.lmm$Y <- data.lmm$Y - model$Res.F$out.F$F.fit
@@ -95,5 +144,11 @@ debias.plmm <- function(simu, model, a = 1, level = 0.95, Z = NULL) {
     ci = ci, beta.hat = beta.hat
   )
   
-  return(debias.PLMM)
+  df.posi = cbind(debias.PLMM$beta.hat, debias.PLMM$bhat, debias.PLMM$ci, debias.PLMM$pv)
+  colnames(df.posi) = c("Estimate", "Debiased", "CI lower", "CI upper", "p-value")
+  df.posi[, 1:4] <- round(df.posi[, 1:4], 2)
+  df.posi = as.data.frame(df.posi)
+  df.posi[,5] = roundpval(df.posi[,5])
+  
+  return(df.posi)
 }
