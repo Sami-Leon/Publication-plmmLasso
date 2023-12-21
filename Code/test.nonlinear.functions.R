@@ -37,10 +37,14 @@ Boot_pre <- function(Data, timexgroup = TRUE) {
   return(F.Bases.timexgroup)
 }
 
-fit.boot <- function(Data) {
+fit.boot <- function(Data, sig.init) {
   pre.boot <- Boot_pre(Data)
-
-  cv_fit <- glmnet::cv.glmnet(pre.boot, Data$Y, alpha = 1)
+  # sig.init<-scalreg::scalreg(scale(pre.boot), scale(Data$Y))$hsigma
+  
+  lambda.grid = seq(1.2, sig.init, -0.1)*sqrt(2*log(ncol(pre.boot))/length(Data$Y))
+  
+  cv_fit <- cv.glmnet(pre.boot, Data$Y, alpha = 1, 
+                      lambda = lambda.grid)
 
   final_fit <- glmnet::glmnet(pre.boot, Data$Y, alpha = 1, lambda = cv_fit$lambda.min)
   fitted_values <- glmnet::predict.glmnet(final_fit, newx = pre.boot, s = cv_fit$lambda.min)
@@ -131,7 +135,7 @@ pred.f <- function(model, data, byseq = 0.1) {
   return(df.F)
 }
 
-create.CI <- function(diff.CI, data) {
+create.CI <- function(diff.CI, data, sig.init) {
   dbar <- colMeans(do.call("rbind", lapply(diff.CI, function(x) {
     x$diff
   })))
@@ -150,7 +154,7 @@ create.CI <- function(diff.CI, data) {
   CIup <- data.frame(position = diff.CI[[1]]$position, up = dbar + qb * sbar)
 
   set.seed(123)
-  obs <- diff.f(pred.f(fit.boot(data), data, byseq = 0.1))
+  obs = diff.f(pred.f(fit.boot(data, sig.init), data, byseq = 0.1))
 
   df.f <- data.frame(obs, CIlow[, 2], CIup[, 2])
   colnames(df.f) <- c("Month", "Group diff.", "CI lower", "CI upper")
