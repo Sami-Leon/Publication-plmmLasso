@@ -175,9 +175,12 @@ f.test <- function(data, model, n = 1000) {
 
   pb <- utils::txtProgressBar(min = 0, max = length(Samples), style = 3)
 
+  pre.boot <- Boot_pre(data.f)
+  sig.init <-scalreg::scalreg(scale(pre.boot), scale(data.f$Y))$hsigma
+  
   res.boot <- list()
   for (k in 1:length(Samples)) {
-    res.boot[[k]] <- fit.boot(Data = Samples[[k]])
+    res.boot[[k]] <- fit.boot(Data = Samples[[k]], sig.init)
 
     utils::setTxtProgressBar(pb, k)
   }
@@ -192,7 +195,7 @@ f.test <- function(data, model, n = 1000) {
 
 
   diff.CI <- lapply(pred.CI, diff.f)
-  df.CI <- create.CI(diff.CI, data.f)
+  df.CI <- create.CI(diff.CI, data.f, sig.init)
 
   plot.CI <- ggplot(df.CI, aes(x = Month, y = `Group diff.`)) +
     geom_line() +
