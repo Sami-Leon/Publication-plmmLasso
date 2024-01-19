@@ -148,7 +148,7 @@ create.CI <- function(diff.CI, data, sig.init) {
     max(abs(x$diff - dbar) / sbar)
   }))
 
-  qb <- quantile(Mb, probs = 0.95)
+  qb <- quantile(Mb, probs = 0.975)
 
   CIlow <- data.frame(position = diff.CI[[1]]$position, low = dbar - qb * sbar)
   CIup <- data.frame(position = diff.CI[[1]]$position, up = dbar + qb * sbar)
