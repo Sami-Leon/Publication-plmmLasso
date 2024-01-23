@@ -43,7 +43,7 @@ fit.boot <- function(Data, sig.init) {
   
   lambda.grid = seq(1.2, sig.init, -0.1)*sqrt(2*log(ncol(pre.boot))/length(Data$Y))
   
-  cv_fit <- cv.glmnet(pre.boot, Data$Y, alpha = 1, 
+  cv_fit <- glmnet::cv.glmnet(pre.boot, Data$Y, alpha = 1, 
                       lambda = lambda.grid)
 
   final_fit <- glmnet::glmnet(pre.boot, Data$Y, alpha = 1, lambda = cv_fit$lambda.min)
