@@ -14,7 +14,7 @@ cst_cor <- function(n, rho) {
   return(m)
 }
 
-simulate_group_inter <- function(N = 50, n.mvnorm = 100, grouped = T, seed,
+simulate_group_inter <- function(N = 50, n.mvnorm = 100, grouped = T, seed = 12,
                                  timepoints = 3:5, nonpara.inter = T,
                                  sample_from, cst_ni, cos = FALSE, A.vec = c(1, 1.5)) {
   set.seed(seed)
