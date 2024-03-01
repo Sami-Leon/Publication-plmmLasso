@@ -1,7 +1,7 @@
 source("plmmlasso.R")
 source("CreateBases.R")
 
-select.plmm <- function(data, gamma, lambda, crit, intercept = T, timexgroup = T) {
+select.plmm <- function(data, gamma, lambda, crit = "BIC", intercept = T, timexgroup = T) {
   grid.param <- expand.grid(lambda, gamma)
   list.MixteNonPara <- list()
 
