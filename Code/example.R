@@ -5,7 +5,7 @@ source("test.nonlinear.functions.R")
 
 # Generating simulated dataset
 data.sim = simulate_group_inter(N = 100, n.mvnorm = 100, grouped = T,
-                                seed = 12, timepoints = 3:5, nonpara.inter = T,
+                                timepoints = 3:5, nonpara.inter = T,
                                 sample_from = seq(0,52,13), cst_ni = F)
 
 lambda.grid <- round(exp(seq(log(0.1), log(1 * 0.0001),
@@ -19,7 +19,7 @@ gamma.grid <- c(
 # Run model on a grid of hyperparameter and retrieve the model with the best BIC
 fit.plmm <- select.plmm(
   data = data.sim[[1]], gamma = gamma.grid, lambda = lambda.grid,
-  crit = "BIC", intercept = T, timexgroup = T
+  intercept = T, timexgroup = T
 )
 
 # Visualize overall fit and nonlinear functions 
