@@ -1,4 +1,5 @@
 # Comparison of Longitudinal Trajectories Using a High-Dimensional Partial Linear Semiparametric Mixed-Effects Model
+This repository provide codes to reproduce the results presented in the paper. Note that a R package in now available on CRAN to estimate the PLSMM model (https://cran.r-project.org/package=plsmmLasso).
 
 Code/CreateBases.R: The R script contains functions dedicated to generating the basis functions used in modeling nonlinear relationships.
 
