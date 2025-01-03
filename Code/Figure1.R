@@ -1,40 +1,68 @@
 source("CreateSim.R")
 source("modelselection.R")
-source("posi.R")
-source("test.nonlinear.functions.R")
 
-# Generating simulated dataset
-data.sim = simulate_group_inter(N = 100, n.mvnorm = 100, grouped = T,
-                                timepoints = 3:5, nonpara.inter = T,
-                                sample_from = seq(0,52,13), cst_ni = F)
+data.sim.a <- simulate_group_inter(
+  N = 100, n.mvnorm = 100, grouped = F,
+  seed = 12, timepoints = 3:5, nonpara.inter = F,
+  sample_from = seq(0, 52, 13), cst_ni = F
+)
 
 lambda.grid <- round(exp(seq(log(0.1), log(1 * 0.0001),
-                             length.out = 10
-)), digits = 4)
+  length.out = 10
+)), digits = 4)[5:6]
 
 gamma.grid <- c(
   0.000001, 0.0000001, 0.00000001, 0.000000001
+)[2:3]
+
+fit.plmm1.a <- select.plmm(
+  data = data.sim.a[[1]], gamma = gamma.grid, lambda = lambda.grid,
+  crit = "BIC", intercept = T, timexgroup = T
 )
 
-# Run model on a grid of hyperparameter and retrieve the model with the best BIC
-fit.plmm <- select.plmm(
-  data = data.sim[[1]], gamma = gamma.grid, lambda = lambda.grid,
-  intercept = T, timexgroup = T
+plot.a <- plot.fit(fit.plmm1.a, data.sim.a, same = T, grouped = F, plot.f = FALSE)
+
+data.sim.b <- simulate_group_inter(
+  N = 100, n.mvnorm = 100, grouped = T,
+  seed = 12, timepoints = 3:5, nonpara.inter = F,
+  sample_from = seq(0, 52, 13), cst_ni = F
 )
 
-# Visualize overall fit and nonlinear functions 
-plot.fit(fit.plmm, data.sim)
+fit.plmm.b <- select.plmm(
+  data = data.sim.b[[1]], gamma = gamma.grid, lambda = lambda.grid,
+  crit = "BIC", intercept = T, timexgroup = T
+)
 
-# Get debiased fixed-effects and pvalues
-posi = debias.plmm(simu = data.sim[[1]], model = fit.plmm)
-posi
+plot.b <- plot.fit(fit.plmm.b, data.sim.b, same = T, grouped = T, plot.f = FALSE)
 
-# Inference for the nonlinear functions
-test.nonlinear.functions = f.test(data.sim[[1]], fit.plmm, n = 1000)
+data.sim.c <- simulate_group_inter(
+  N = 100, n.mvnorm = 100, grouped = F,
+  seed = 12, timepoints = 3:5, nonpara.inter = T,
+  sample_from = seq(0, 52, 13), cst_ni = F
+)
 
-# Test of equality of the functions H0: f1 = f2
-test.nonlinear.functions[[1]]
+fit.plmm.c <- select.plmm(
+  data = data.sim.c[[1]], gamma = gamma.grid, lambda = lambda.grid,
+  crit = "BIC", intercept = T, timexgroup = T
+)
 
-# Continuous joint confidence bands for the difference between f1 and f2
-test.nonlinear.functions[[3]]
+plot.c <- plot.fit(fit.plmm.c, data.sim.c, same = F, grouped = F, plot.f = FALSE)
 
+data.sim.d <- simulate_group_inter(
+  N = 100, n.mvnorm = 100, grouped = T,
+  seed = 12, timepoints = 3:5, nonpara.inter = T,
+  sample_from = seq(0, 52, 13), cst_ni = F
+)
+
+fit.plmm.d <- select.plmm(
+  data = data.sim.d[[1]], gamma = gamma.grid, lambda = lambda.grid,
+  crit = "BIC", intercept = T, timexgroup = T
+)
+
+plot.d <- plot.fit(fit.plmm.d, data.sim.d, same = F, grouped = T, plot.f = FALSE)
+
+
+ggarrange(plot.a, plot.b, plot.c, plot.d,
+  ncol = 2, nrow = 2, common.legend = TRUE,
+  legend = "bottom", labels = c("(a)", "(b)", "(c)", "(d)")
+)

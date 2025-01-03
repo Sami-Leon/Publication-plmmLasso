@@ -1,7 +1,7 @@
 Boot_samples <- function(Data, n = 1000) {
   unique_patients <- unique(Data$series)
 
-  n_bootstrap_samples <- n # number of bootstrap samples
+  n_bootstrap_samples <- n
 
   bootstrap_samples <- list()
 
@@ -39,12 +39,13 @@ Boot_pre <- function(Data, timexgroup = TRUE) {
 
 fit.boot <- function(Data, sig.init) {
   pre.boot <- Boot_pre(Data)
-  # sig.init<-scalreg::scalreg(scale(pre.boot), scale(Data$Y))$hsigma
-  
-  lambda.grid = seq(1.2, sig.init, -0.1)*sqrt(2*log(ncol(pre.boot))/length(Data$Y))
-  
-  cv_fit <- glmnet::cv.glmnet(pre.boot, Data$Y, alpha = 1, 
-                      lambda = lambda.grid)
+
+  lambda.grid <- seq(1.2, sig.init, -0.1) * sqrt(2 * log(ncol(pre.boot)) / length(Data$Y))
+
+  cv_fit <- glmnet::cv.glmnet(pre.boot, Data$Y,
+    alpha = 1,
+    lambda = lambda.grid
+  )
 
   final_fit <- glmnet::glmnet(pre.boot, Data$Y, alpha = 1, lambda = cv_fit$lambda.min)
   fitted_values <- glmnet::predict.glmnet(final_fit, newx = pre.boot, s = cv_fit$lambda.min)
@@ -81,7 +82,7 @@ diff.f <- function(res.boot) {
 overall.test <- function(list.boot.fit, model) {
   df_list_fit <- lapply(seq_along(list.boot.fit), function(i) {
     df <- list.boot.fit[[i]]$out.F
-    df$boot <- as.character(i) # Create a group variable
+    df$boot <- as.character(i)
     return(df)
   })
 
@@ -108,7 +109,7 @@ pred.f <- function(model, data, byseq = 0.1) {
 
   t.cont <- seq(min(data$position), max(data$position), by = byseq)
   t.obs <- sort(unique(data$position))
-  # browser()
+
   df.F <- data.frame(
     c(t.cont, t.cont),
     c(f.hat.old(
@@ -154,17 +155,17 @@ create.CI <- function(diff.CI, data, sig.init) {
   CIup <- data.frame(position = diff.CI[[1]]$position, up = dbar + qb * sbar)
 
   set.seed(123)
-  obs = diff.f(pred.f(fit.boot(data, sig.init), data, byseq = 0.1))
+  obs <- diff.f(pred.f(fit.boot(data, sig.init), data, byseq = 0.1))
 
   df.f <- data.frame(obs, CIlow[, 2], CIup[, 2])
   colnames(df.f) <- c("Month", "Group diff.", "CI lower", "CI upper")
-  # df.f = apply(df.f, 2, function(x) round(x, 2))
+
   rownames(df.f) <- NULL
 
   return(as.data.frame(df.f))
 }
 
-f.test <- function(data, model, n = 1000) {
+f.test <- function(data, model, n = 1000, predicted = TRUE) {
   data.f <- data
   data.f$Y <- data$Y - model$Res.F$X.fit - rep(model$U2$U2, model$ni)
   data.f <- data.f[, c("series", "position", "Y", "Group")]
@@ -176,8 +177,8 @@ f.test <- function(data, model, n = 1000) {
   pb <- utils::txtProgressBar(min = 0, max = length(Samples), style = 3)
 
   pre.boot <- Boot_pre(data.f)
-  sig.init <-scalreg::scalreg(scale(pre.boot), scale(data.f$Y))$hsigma
-  
+  sig.init <- scalreg::scalreg(scale(pre.boot), scale(data.f$Y))$hsigma
+
   res.boot <- list()
   for (k in 1:length(Samples)) {
     res.boot[[k]] <- fit.boot(Data = Samples[[k]], sig.init)
@@ -197,13 +198,168 @@ f.test <- function(data, model, n = 1000) {
   diff.CI <- lapply(pred.CI, diff.f)
   df.CI <- create.CI(diff.CI, data.f, sig.init)
 
-  plot.CI <- ggplot(df.CI, aes(x = Month, y = `Group diff.`)) +
-    geom_line() +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    geom_line(aes(Month, `CI lower`), data = df.CI, col = "blue") +
-    geom_line(aes(Month, `CI upper`), data = df.CI, col = "blue") +
-    labs(x = "Time", y = "Difference") +
-    scale_x_continuous(breaks = t.obs)
 
-  return(list(L2norm.df = L2norm.df, df.CI = df.CI, plot.CI = plot.CI))
+
+  if (predicted) {
+    plot.CI <- ggplot(df.CI, aes(x = Month, y = `Group diff.`)) +
+      geom_line() +
+      geom_hline(yintercept = 0, linetype = "dashed") +
+      geom_line(aes(Month, `CI lower`), data = df.CI, col = "blue") +
+      geom_line(aes(Month, `CI upper`), data = df.CI, col = "blue") +
+      labs(x = "Time", y = "Difference") +
+      scale_x_continuous(breaks = t.obs)
+  } else {
+    df.CI.obs <- df.CI[df.CI$Month %in% t.obs, ]
+
+    df.CI <- df.CI.obs
+
+    plot.CI <- ggplot(df.CI.obs, aes(x = Month, y = `Group diff.`)) +
+      geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+      geom_ribbon(
+        aes(
+          x = Month, ymin = `CI lower`,
+          ymax = `CI upper`
+        ),
+        data = df.CI.obs,
+        fill = "gray", alpha = 0.6
+      ) +
+      labs(x = "Time", y = "Difference") +
+      geom_line(linewidth = 0.7) +
+      scale_x_continuous(breaks = t.obs)
+  }
+
+
+  df_list_fit <- lapply(seq_along(res.boot), function(i) {
+    df <- res.boot[[i]]$out.F
+    df$boot <- as.character(i)
+    return(df)
+  })
+
+  combined_fit <- bind_rows(df_list_fit)
+
+  group_label <- c("0" = "non-black", "1" = "black")
+
+  plot.boot <- ggplot(combined_fit, aes(x = position, y = F.fit, group = boot)) +
+    geom_line(alpha = 0.3, linetype = "dashed") +
+    geom_line(aes(x = position, y = F.fit, group = Group, col = factor(Group)),
+      data = model$Res.F$out.F, size = 1.4,
+      linetype = "solid"
+    ) +
+    scale_color_manual(
+      name = "", values = c("0" = "blue", "1" = "red"),
+      labels = c("non-black", "black")
+    ) +
+    labs(x = "time (Months)", y = "f(time)") +
+    facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
+    scale_linetype_manual(
+      name = "Type",
+      labels = c("Estimates", "Bootstraps")
+    ) +
+    scale_x_continuous(breaks = c(1, 2, 4, 6, 12, 18, 24)) +
+    theme(text = element_text(size = 16))
+
+  return(list(L2norm.df = L2norm.df, df.CI = df.CI, plot.CI = plot.CI, plot.boot = plot.boot))
+}
+
+
+
+test_f <- function(x, y, series, t, name_group_var, plsmm_output, n_boot = 1000,
+                   predicted = FALSE, show_obs = FALSE, verbose = TRUE) {
+  f0 <- plsmm_output$lasso_output$out_f[plsmm_output$lasso_output$out_f$group == 0, ]
+  f0 <- f0[!duplicated(f0$t), ]
+  f0 <- f0[order(f0$t), ]
+
+  f1 <- plsmm_output$lasso_output$out_f[plsmm_output$lasso_output$out_f$group == 1, ]
+  f1 <- f1[!duplicated(f1$t), ]
+  f1 <- f1[order(f1$t), ]
+
+  if (identical(f1$f_fit, f0$f_fit)) {
+    stop("The nonlinear functions are equal in the plsmm_output. The test is irrelevant in this case. Try running plsmm_lasso with timexgroup = TRUE")
+  }
+
+  y <- y - plsmm_output$lasso_output$x_fit - rep(plsmm_output$out_phi$phi, plsmm_output$ni)
+
+  t_obs <- sort(unique(t))
+
+  data <- data.frame(y, series, t, x[, name_group_var])
+  colnames(data)[4] <- "group"
+
+  samples <- sample_boot(data = data, n_boot = n_boot)
+
+  pb <- utils::txtProgressBar(min = 0, max = length(samples), style = 3)
+
+  min_lambda <- scalreg::scalreg(scale(create_bases_boot(data)), scale(data$y))$hsigma
+
+  fitted_boot <- vector("list", n_boot)
+
+  for (k in 1:n_boot) {
+    fitted_boot[[k]] <- fit_boot(data = samples[[k]], min_lambda = min_lambda)
+
+    if (verbose) {
+      utils::setTxtProgressBar(pb, k)
+    }
+  }
+
+  if (verbose) {
+    message("\nCompleted fitting Bootstrap samples. Now formatting results, and generating figure.\n")
+  }
+
+  overall_test_results <- L2_test_f(
+    list_fitted_boot = fitted_boot,
+    plsmm_output = plsmm_output
+  )
+
+  predicted_f <- lapply(1:length(fitted_boot), function(i) {
+    pred_f(
+      model = fitted_boot[[i]], data = samples[[i]],
+      t_seq = seq(min(samples[[i]]$t), max(samples[[i]]$t), by = 0.1)
+    )
+  })
+
+
+  diff_predicted_f <- lapply(predicted_f, calc_f_diff)
+  CI_f <- create_CI(diff_predicted_f, data, min_lambda)
+
+  if (predicted) {
+    plot_CI <- ggplot2::ggplot(CI_f, ggplot2::aes(x = t, y = .data$`f diff.`)) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(
+          x = t, ymin = .data$`Lower 95%`,
+          ymax = .data$`Upper 95%`
+        ),
+        data = CI_f,
+        fill = "gray", alpha = 0.6
+      ) +
+      ggplot2::geom_line(linewidth = 0.7) +
+      ggplot2::geom_point(
+        ggplot2::aes(x = t, y = .data$`f diff.`),
+        CI_f[CI_f$t %in% t_obs, ]
+      )
+  } else {
+    CI_obs_f <- CI_f[CI_f$t %in% t_obs, ]
+
+    plot_CI <- ggplot2::ggplot(CI_obs_f, ggplot2::aes(x = t, y = .data$`f diff.`)) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(
+          x = t, ymin = .data$`Lower 95%`,
+          ymax = .data$`Upper 95%`
+        ),
+        data = CI_obs_f,
+        fill = "gray", alpha = 0.6
+      ) +
+      ggplot2::geom_line(linewidth = 0.7) +
+      ggplot2::geom_point()
+  }
+
+  if (show_obs) {
+    plot_CI <- plot_CI +
+      ggplot2::scale_x_continuous(breaks = t_obs)
+  }
+
+  print(plot_CI)
+  return(list(
+    overall_test_results = overall_test_results, CI_f = CI_f
+  ))
 }

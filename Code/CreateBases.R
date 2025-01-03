@@ -1,12 +1,9 @@
 Bases.NonNulles <- function(F.bases) {
-  # Filter bases functions that are essentially 0 if any
   F.bases.Present <- c()
   M <- dim(F.bases)[2]
-  # n.posx=dim(F.bases)[1]
   PresentBases <- c()
   for (j in 1:M) {
     fj <- F.bases[, j]
-    # if (sum(fj==0)!=n.posx){
     if (sum(abs(fj)) > 10^-10) {
       PresentBases <- c(PresentBases, j)
     }
@@ -16,16 +13,6 @@ Bases.NonNulles <- function(F.bases) {
 }
 
 CreationBases <- function(position, keep = NULL) {
-  # Inputs:
-  # position: time for all individuals
-  #
-  # Output: a list with:
-  # - F.Bases: Functions of the dictionary
-  # - Num.Bases.Pres: ID of the functions
-
-  # Choosing the dictionary for Lasso estimation
-
-  # Fourier (sin,cos)
   Ff <- c()
 
   n <- max(position)
@@ -34,7 +21,6 @@ CreationBases <- function(position, keep = NULL) {
     Ff <- cbind(Ff, sin(2 * pi * i * position / n), cos(2 * pi * i * position / n))
   }
 
-  # Power functions
   x <- position / n
   Fx <- c()
   rg <- seq(0.1, 2, 0.02)

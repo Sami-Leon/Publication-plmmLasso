@@ -1,3 +1,10 @@
+library("glmnet")
+library("MASS")
+library("dplyr")
+library("ggplot2")
+library("reshape2")
+library("grid")
+
 criteria <- function(name, out.EM, data, logLik, nonpara = F) {
   ntot <- nrow(data)
   k <- sum(out.EM$theta != 0)
@@ -27,9 +34,6 @@ init.si <- function(Data) {
 
   su <- var(c(Yi.dot), na.rm = T)
   se <- var(Data$Y, na.rm = T) - su
-  if (se < 0) {
-    se <- 0.01
-  }
   g <- se / su
   invisible(list(g = g, se = se))
 }
@@ -52,6 +56,7 @@ Estep <- function(Data, out.F, g, ni, theta, fixed_effects) {
   }
 
 
+
   U2 <- tapply(res$resid,
     list(series = as.factor(res$series)),
     FUN = function(x) sum(x, na.rm = TRUE)
@@ -61,6 +66,7 @@ Estep <- function(Data, out.F, g, ni, theta, fixed_effects) {
     series = unique(Data$series),
     U2 = c(t(U2))
   )
+
 
   invisible(list(U2 = U2))
 }
@@ -99,32 +105,27 @@ MstepSe <- function(Data, out.F, g, se, U2, ni, theta, fixed_effects) {
 MstepSu <- function(Data, g, se, U2, ni) {
   I <- length(unique(Data$series))
   su <- sum((U2$U2)^2, na.rm = T) + sum(se / (ni + g), na.rm = TRUE)
+
   su <- su / I
 
   su[su == Inf] <- 0
   return(su = su)
 }
 
-Residuals.before.F.gen <- function(Data, U2, ni, fixed_effects) {
-  X <- as.matrix(cbind(1, subset(Data, select = -c(series, position, Y))))
+Residuals.before.F.gen <- function(Data, U2, ni) {
   Data.tmp <- Data
   U2.tmp <- rep(U2$U2, ni)
 
-  if (fixed_effects == TRUE) {
-    Data.tmp$Y <- Data.tmp$Y - U2.tmp
-  } else {
-    Data.tmp$Y <- Data.tmp$Y - U2.tmp
-  }
+  Data.tmp$Y <- Data.tmp$Y - U2.tmp
 
   return(Data.tmp = Data.tmp)
 }
 
 EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
-                      lambda.grid, timexgroup, pre.D, debias = FALSE) {
+                      lambda.grid, timexgroup, pre.D) {
   M <- (dim(F.Bases)[2]) / 2
 
   X <- as.matrix(subset(Data, select = -c(series, position, Y)))
-
   X.stand <- scale(X, scale = T)
 
   X.mean <- attr(X.stand, "scaled:center")
@@ -136,14 +137,11 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
   Flars.X <- cbind(X.stand, F.Bases)
 
   D <- diag(1, nrow = ncol(Flars.X), ncol = ncol(Flars.X))
-
   Lambda <- sqrt(se * gam.cste * log(M))
 
-  D[(ncol(X.stand) + 1):ncol(D), (ncol(X.stand) + 1):ncol(D)] <- pre.D * (Lambda / lambda.grid)
-
+  D[(ncol(X.stand) + 1):ncol(D), (ncol(X.stand) + 1):ncol(D)] <- pre.D * (Lambda / (lambda.grid * length(Data$Y)))
   D.inv <- D
   diag(D.inv) <- 1 / diag(D.inv)
-
   Flars.X.lasso <- Flars.X %*% D.inv
 
   y.stand <- scale(Data$Y)
@@ -173,9 +171,6 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
   coef.lasso[2:ncol(X), 1] <- coef.lasso[2:ncol(X), 1] / X.sd
 
   theta <- coef.lasso[1:ncol(X), 1]
-  names(theta) <- colnames(X)
-  names(theta)[1] <- "Intercept"
-
   Coef.Val <- coef.lasso[(ncol(X) + 1):nrow(coef.lasso), 1]
 
   theta[-1][abs(theta)[-1] < 0.01] <- 0
@@ -198,8 +193,8 @@ EstiF.gen <- function(Data, F.Bases, se, gam.cste, intercept, fixed_effects,
   ))
 }
 
-plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercept,
-                      lambda.grid, timexgroup, tol.EM = 0.001) {
+plmmlasso.zero <- function(Y, series, position, X = NULL, F.Bases, gam.cste = 0, intercept,
+                           lambda.grid, timexgroup, tol.EM = 0.001) {
   fixed_effects <- ifelse(is.null(X), FALSE, TRUE)
 
   Data <- as.data.frame(cbind(Y, series, position, X))
@@ -239,14 +234,11 @@ plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercep
 
   maxIter <- 50
   delta.EM <- Inf
+  delta.new <- Inf
   Iter <- 0
 
-  theta.MSE <- NULL
-  F.fit.MSE <- NULL
-  U2.MSE <- NULL
-  overall.MSE <- NULL
-
   delta.EM.iter <- NULL
+  delta.new.iter <- NULL
 
   while ((delta.EM > tol.EM) & (Iter < maxIter)) {
     Iter <- Iter + 1
@@ -264,7 +256,7 @@ plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercep
     g.tmp[is.nan(g.tmp)] <- 0
     su.tmp[is.nan(su.tmp)] <- 0
 
-    out.Data <- Residuals.before.F.gen(Data, U2, ni, fixed_effects)
+    out.Data <- Residuals.before.F.gen(Data, U2, ni)
 
     Res.F <- EstiF.gen(
       Data = out.Data, F.Bases = F.Bases.timexgroup, se = se.tmp, gam.cste = gam.cste,
@@ -273,16 +265,15 @@ plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercep
       pre.D = pre.D
     )
 
-
     out.F.tmp <- Res.F$out.F
 
     theta.tmp <- Res.F$theta
-
 
     delta.F <- 0
     delta.theta <- 0
     delta.se <- 0
     delta.su <- 0
+    delta.new <- Inf
 
     if (Iter == 2) {
       t2 <- c(out.F$F.fit, se, se / g, theta)
@@ -302,14 +293,12 @@ plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercep
       tp0 <- t1 + tp0 / sum(tp0^2)
       delta.EM <- sum((tp0 - tp1)^2)
 
+      delta.new <- sum((t0 - t1)^2)
+
       delta.F <- sum((out.F$F.fit - out.F.tmp$F.fit)^2)
       delta.theta <- sum((theta - theta.tmp)^2)
       delta.se <- sum((se - se.tmp)^2)
       delta.su <- sum((se / g - se.tmp / g.tmp)^2)
-    }
-
-    if ((delta.EM > 3) & (Iter > 3)) {
-      Iter <- Iter + (50 - Iter)
     }
 
     se <- se.tmp
@@ -318,72 +307,53 @@ plmmlasso <- function(Y, series, position, X = NULL, F.Bases, gam.cste, intercep
     g <- g.tmp
     theta <- theta.tmp
 
-    mean.0.tmp <- mean(unique(out.F[out.F$Group == 0, ]$F.fit))
-    mean.1.tmp <- mean(unique(out.F[out.F$Group == 1, ]$F.fit))
-
-    out.F.tmp <- out.F
-
-    out.F.tmp[out.F.tmp$Group == 0, ]$F.fit <- out.F.tmp[out.F.tmp$Group == 0, ]$F.fit - mean.0.tmp
-    out.F.tmp[out.F.tmp$Group == 1, ]$F.fit <- out.F.tmp[out.F.tmp$Group == 1, ]$F.fit - mean.1.tmp
-
-    theta.tmp <- theta
-
-    theta.tmp[2] <- theta.tmp[2] + (mean.1.tmp - mean.0.tmp)
-    theta.tmp[1] <- theta.tmp[1] + mean.0.tmp
-
-    cat("Iter ", Iter, delta.EM, delta.F, delta.theta, delta.se, delta.su, "\n")
+    cat("Iter ", Iter, delta.EM, delta.new, delta.F, delta.theta, delta.se, delta.su, "\n")
 
     delta.EM.iter[Iter] <- delta.EM
+    delta.new.iter[Iter] <- delta.new
   }
-
-  mean.0 <- mean(unique(out.F[out.F$Group == 0, ]$F.fit))
-  mean.1 <- mean(unique(out.F[out.F$Group == 1, ]$F.fit))
-
-  Res.F$out.F[Res.F$out.F$Group == 0, ]$F.fit <- Res.F$out.F[Res.F$out.F$Group == 0, ]$F.fit - mean.0
-  Res.F$out.F[Res.F$out.F$Group == 1, ]$F.fit <- Res.F$out.F[Res.F$out.F$Group == 1, ]$F.fit - mean.1
-
-  Res.F$theta["Group"] <- Res.F$theta["Group"] + (mean.1 - mean.0)
-  Res.F$theta["Intercept"] <- Res.F$theta["Intercept"] + mean.0
-  Res.F$X.fit <- as.matrix(cbind(1, X)) %*% Res.F$theta
-
   hyper.parameters <- data.frame(lambda.grid = lambda.grid, gam.cste = gam.cste)
-  converged <- ifelse(Iter >= maxIter, FALSE, TRUE)
+  converged <- ifelse(Iter >= maxIter, F, T)
+
+  Res.F$X.fit <- as.matrix(cbind(1, X)) %*% Res.F$theta
 
   Z <- model.matrix(~ 0 + factor(series), Data)
   logLik <- mvtnorm::dmvnorm(
     x = Data$Y,
     mean = as.vector(Res.F$X.fit) + Res.F$out.F$F.fit,
-    sigma = diag(nrow(Z)) * se + su * Z %*% t(Z), log = TRUE
+    sigma = diag(nrow(Z)) * se + su * Z %*% t(Z), log = T
   )
 
   BIC <- criteria(
     name = "BIC", out.EM = Res.F, data = Data,
-    logLik = logLik, nonpara = FALSE
+    logLik = logLik, nonpara = F
   )
   BIC.nonpara <- criteria(
     name = "BIC", out.EM = Res.F, data = Data,
-    logLik = logLik, nonpara = TRUE
+    logLik = logLik, nonpara = T
   )
   BICC <- criteria(
     name = "BICC", out.EM = Res.F, data = Data,
-    logLik = logLik, nonpara = FALSE
+    logLik = logLik, nonpara = F
   )
   BICC.nonpara <- criteria(
     name = "BICC", out.EM = Res.F, data = Data,
-    logLik = logLik, nonpara = TRUE
+    logLik = logLik, nonpara = T
   )
   EBIC <- criteria(
     name = "EBIC", out.EM = Res.F, data = Data, logLik =
-      logLik, nonpara = FALSE
+      logLik, nonpara = F
   )
   EBIC.nonpara <- criteria(
     name = "EBIC", out.EM = Res.F, data = Data,
-    logLik = logLik, nonpara = TRUE
+    logLik = logLik, nonpara = T
   )
 
-  return(list(
+
+  invisible(list(
     Res.F = Res.F, se = se, su = su, U2 = U2, ni = ni, delta.EM = delta.EM.iter,
-    hyper.parameters = hyper.parameters, converged = converged, BIC = BIC,
+    delta.new = delta.new.iter, hyper.parameters = hyper.parameters,
+    converged = converged, BIC = BIC,
     BIC.nonpara = BIC.nonpara, BICC = BICC, BICC.nonpara = BICC.nonpara,
     EBIC = EBIC, EBIC.nonpara = EBIC.nonpara
   ))

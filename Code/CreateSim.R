@@ -101,21 +101,135 @@ simulate_group_inter <- function(N = 50, n.mvnorm = 100, grouped = T, seed = 12,
   return(list(Group1, phi, f.val))
 }
 
-f.hat.old = function(t, coef, group, keep = NULL) {
-  
-  F.Bases = CreationBases(t, keep = keep)$F.Bases
-  
-  if(group == 0) {
-    coef = coef[1:ncol(F.Bases)]
+simulate_irregular <- function(N = 50, n.mvnorm = 100, grouped = T, seed,
+                               timepoints = 3:5, nonpara.inter = T,
+                               sample_from, cst_ni, cos = FALSE, A.vec = c(1, 1.5),
+                               cor = 0) {
+  set.seed(seed)
+  if (nonpara.inter) {
+    A <- c(A.vec[1], A.vec[2])
+    omega <- c(60, 110)
+
+    f0mean <- mean(f(seq(sample_from[1], sample_from[length(sample_from)], by = 1),
+      A[1], omega[1],
+      cos = FALSE
+    ))
+
+    f1mean <- mean(f(seq(sample_from[1], sample_from[length(sample_from)], by = 1),
+      A[2], omega[2],
+      cos = cos
+    ))
   } else {
-    coef = coef[(ncol(F.Bases)+1):length(coef)]
+    A <- c(A.vec[1], A.vec[1])
+    omega <- c(60, 60)
+    f0mean <- mean(f(sample_from, A[1], omega[1], cos = FALSE))
+    f1mean <- f0mean
   }
-  
-  return(F.Bases %*% coef)
-  
+
+
+  Y <- NULL
+  out <- NULL
+
+  f.val <- NULL
+
+  for (i in 1:N) {
+    if (cst_ni) {
+      ni <- timepoints
+    } else {
+      ni <- sample(timepoints, 1)
+    }
+
+    if (grouped) {
+      theta <- c(3, 2, 1, 0, 0.8, 0, 1, rep(0, n.mvnorm - 6))
+
+      theta1 <- c(0, -1.5, 0, -1, -1.2, rep(0, n.mvnorm - 4))
+    } else {
+      theta <- c(0, 2, 0)
+    }
+
+    group <- rep(sample(c(0, 1), 1), ni)
+
+    X1 <- rep(rnorm(1, 1, sqrt(0.5)), ni)
+
+    eps <- rnorm(ni, 0, sqrt(0.05))
+
+    t <- round(sort(runif(ni, sample_from[1], sample_from[length(sample_from)])), 1)
+
+
+    if (group[1] == 0) {
+      out <- rbind(out, cbind(
+        rep(i, ni), t, f(t, A[1], omega[1], cos = FALSE) + eps - f0mean,
+        group, X1
+      ))
+
+      f.val <- c(f.val, f(t, A[1], omega[1], cos = FALSE) - f0mean)
+    } else {
+      out <- rbind(out, cbind(
+        rep(i, ni), t, f(t, A[2], omega[2], cos = cos) + eps - f1mean,
+        group, X1
+      ))
+
+      f.val <- c(f.val, f(t, A[2], omega[2], cos = cos) - f1mean)
+    }
+  }
+
+  Sigma_X <- cst_cor(n.mvnorm + 1, cor)
+  mu_X <- rep(0, n.mvnorm + 1)
+  Sigma_X[1, -1] <- 0
+  Sigma_X[-1, 1] <- 0
+  X <- MASS::mvrnorm(N, mu_X, Sigma_X)
+
+  out_ni <- table(out[, 1])
+
+  phi <- sqrt(0.5) * X[, 1]
+
+  out[, 3] <- out[, 3] + rep(phi, out_ni)
+
+  X <- X[, -1]
+
+  X <- apply(X, 2, function(x) {
+    rep(x, out_ni) + rnorm(length(rep(x, out_ni)), 0, 0.2)
+  })
+  X[, 1] <- 1 + sqrt(0.5) * scale(X[, 1])
+
+  out <- cbind(out[, -5], X)
+
+  colnames(out) <- c("series", "position", "Y", "Group", paste0("X", 1:(ncol(X))))
+
+  Group1 <- out
+
+  Group1[Group1[, "Group"] == 0, "Y"] <- Group1[Group1[, "Group"] == 0, "Y"] +
+    Group1[Group1[, "Group"] == 0, -1:-3] %*% theta1
+
+  Group1[Group1[, "Group"] == 1, "Y"] <- Group1[Group1[, "Group"] == 1, "Y"] +
+    Group1[Group1[, "Group"] == 1, -1:-3] %*% theta
+
+  Group1 <- as.data.frame(Group1)
+
+  phi <- rep(phi, table(Group1$series))
+
+  Group1 <- Group1[order(Group1$series, Group1$position), ]
+
+  f.val <- f.val[order(Group1$series, Group1$position)]
+
+  phi <- phi[order(Group1$series, Group1$position)]
+
+  return(list(Group1, phi, f.val))
 }
 
-plot.fit <- function(list.EM.out, data, same = FALSE) {
+f.hat.old <- function(t, coef, group, keep = NULL) {
+  F.Bases <- CreationBases(t, keep = keep)$F.Bases
+
+  if (group == 0) {
+    coef <- coef[1:ncol(F.Bases)]
+  } else {
+    coef <- coef[(ncol(F.Bases) + 1):length(coef)]
+  }
+
+  return(F.Bases %*% coef)
+}
+
+plot.fit <- function(list.EM.out, data, same = FALSE, grouped = T, plot.f = TRUE) {
   EM.out <- list.EM.out
 
   data1 <- data[[1]]
@@ -124,7 +238,12 @@ plot.fit <- function(list.EM.out, data, same = FALSE) {
 
   t.obs <- sort(unique(data1$position))
 
-  data1$X <- as.matrix(data1[, 4:6]) %*% cbind(c(3, 2, 1))
+  if (grouped) {
+    data1$X <- as.matrix(data1[, 4:6]) %*% cbind(c(3, 2, 1))
+  } else {
+    data1$X <- as.matrix(data1[, 4:6]) %*% cbind(c(0, 2, 0))
+  }
+
 
   bluemean_X <- data1 %>%
     group_by(Group) %>%
@@ -201,6 +320,211 @@ plot.fit <- function(list.EM.out, data, same = FALSE) {
     values.1 <- f(t.cont, A = 1.5, omega = 110) - mean(f(t.obs, A = 1.5, omega = 110))
   }
 
+  if (same) {
+    df.F <- data.frame(
+      c(t.cont, t.cont), c(values, values.1),
+      c(f.hat.old(
+        t = t.cont,
+        coef = EM.out$Res.F$Coef.Val, group = 1,
+        keep = Dico.norm$Num.Bases.Pres
+      ) - mean(f.hat.old(
+        t = t.obs,
+        coef = EM.out$Res.F$Coef.Val, group = 1,
+        keep = Dico.norm$Num.Bases.Pres
+      )), f.hat.old(
+        t = t.cont,
+        coef = EM.out$Res.F$Coef.Val, group = 1,
+        keep = Dico.norm$Num.Bases.Pres
+      ) - mean(f.hat.old(
+        t = t.obs,
+        coef = EM.out$Res.F$Coef.Val, group = 1,
+        keep = Dico.norm$Num.Bases.Pres
+      ))),
+      c(rep(0, length(t.cont)), rep(1, length(t.cont)))
+    )
+  } else {
+    df.F <- data.frame(
+      c(t.cont, t.cont), c(values, values.1),
+      c(f.hat.old(
+        t = t.cont,
+        coef = EM.out$Res.F$Coef.Val, group = EM.out$Res.F$out.F$Group[1],
+        keep = Dico.norm$Num.Bases.Pres
+      ) - mean(f.hat.old(
+        t = t.obs,
+        coef = EM.out$Res.F$Coef.Val, group = EM.out$Res.F$out.F$Group[1],
+        keep = Dico.norm$Num.Bases.Pres
+      )), f.hat.old(
+        t = t.cont,
+        coef = EM.out$Res.F$Coef.Val, group = 1 - EM.out$Res.F$out.F$Group[1],
+        keep = Dico.norm$Num.Bases.Pres
+      ) - mean(f.hat.old(
+        t = t.obs,
+        coef = EM.out$Res.F$Coef.Val, group = 1 - EM.out$Res.F$out.F$Group[1],
+        keep = Dico.norm$Num.Bases.Pres
+      ))),
+      c(rep(0, length(t.cont)), rep(1, length(t.cont)))
+    )
+  }
+
+
+  colnames(df.F) <- c("t", "f", "F.fit", "Group")
+
+  means <- aggregate(cbind(phi, X, U2, X.fit) ~ Group, data = data1, FUN = mean)
+  names(means) <- c("Group", "phi", "X", "U2", "X.fit")
+
+  df.F <- merge(df.F, means, by = "Group")
+
+  df.F$f.overall <- df.F$f + df.F$X + df.F$phi
+  df.F$F.fit.overall <- df.F$F.fit + df.F$X.fit + df.F$U2
+
+
+  p.F.overall <- p + geom_line(aes(x = position, y = Y, group = series)) +
+    geom_line(aes(x = t, y = f.overall, color = "truth"), size = 1.3, data = df.F) +
+    geom_line(aes(x = t, y = F.fit.overall, color = "estimate"), data = df.F, size = 1.3) +
+    scale_color_manual(name = "Legend", values = c("truth" = "blue", "estimate" = "red")) +
+    facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
+    ylab("Y") + xlab("Time") + geom_point(aes(x = t, y = f.overall), col = "blue", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
+    geom_point(aes(x = t, y = F.fit.overall), col = "red", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
+    scale_x_continuous(breaks = t.obs)
+
+  p.F <- ggplot(aes(x = t, y = f), data = df.F) +
+    geom_line(aes(x = t, y = f, color = "truth"), size = 1.3, data = df.F) +
+    geom_line(aes(x = t, y = F.fit, color = "estimate"), data = df.F, size = 1.3) +
+    scale_color_manual(name = "Legend", values = c("truth" = "blue", "estimate" = "red")) +
+    facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
+    ylab("f(time)") +
+    xlab("Time") +
+    geom_point(aes(x = t, y = f), col = "blue", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
+    geom_point(aes(x = t, y = F.fit), col = "red", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
+    ylim(c(-1.5, 10)) +
+    scale_x_continuous(breaks = t.obs)
+
+  if (!plot.f) {
+    return(p.F.overall)
+  }
+  ggarrange(p.F.overall, p.F, ncol = 1, nrow = 2, common.legend = TRUE, legend = "bottom")
+}
+
+
+plot.fit.irr <- function(list.EM.out, data, same = FALSE, cont.t = 0.1, legend = TRUE) {
+  EM.out <- list.EM.out
+
+  data1 <- data[[1]]
+
+  t.obs <- sort(unique(data1$position))
+
+  X <- subset(data1, select = -c(Y, series, position))
+  Groupvar <- X$Group
+  X <- X[, -1]
+  X.inter <- matrix(nrow = nrow(X), ncol = ncol(X) * 2)
+  for (i in 1:nrow(X.inter)) {
+    if (Groupvar[i] == 1) {
+      X.inter[i, ] <- c(unlist(X[i, ]), rep(0, ncol(X)))
+    } else {
+      X.inter[i, ] <- c(rep(0, ncol(X)), unlist(X[i, ]))
+    }
+  }
+  X.inter <- as.data.frame(X.inter)
+  colnames(X.inter) <- c(
+    paste0("Group1_", colnames(X)),
+    paste0("Group0_", colnames(X))
+  )
+
+  X.inter <- data.frame(data1[, 1:4], X.inter)
+
+  data1 <- X.inter
+
+  data1$X <- as.matrix(data1[, 4:204]) %*% cbind(c(
+    c(3, 2, 1, 0, 0.8, 0, 1, rep(0, 94)),
+    c(-1.5, 0, -1, -1.2, rep(0, 96))
+  ))
+
+  data1$phi <- data[[2]]
+  data1$f <- data[[3]]
+
+
+
+  bluemean_X <- data1 %>%
+    group_by(Group) %>%
+    mutate(mean = mean(X)) %>%
+    ungroup()
+
+  bluemean_U2 <- data1 %>%
+    group_by(Group) %>%
+    mutate(mean = mean(phi)) %>%
+    ungroup()
+
+  data1$blueline <- data1$f + bluemean_U2$mean + bluemean_X$mean
+
+  mean_blueline <- data1 %>%
+    group_by(Group, position) %>%
+    mutate(mean = mean(blueline)) %>%
+    ungroup()
+
+  data1$blueline <- mean_blueline$mean
+
+  data1$F.fit <- EM.out$Res.F$out.F$F.fit
+  data1$X.fit <- EM.out$Res.F$X.fit
+  data1$U2 <- rep(EM.out$U2$U2, table(data1$series))
+
+  mean_X <- data1 %>%
+    group_by(Group) %>%
+    mutate(mean = mean(X.fit)) %>%
+    ungroup()
+
+  mean_U2 <- data1 %>%
+    group_by(Group) %>%
+    mutate(mean = mean(U2)) %>%
+    ungroup()
+
+  redline <- EM.out$Res.F$out.F$F.fit + mean_X$mean + mean_U2$mean
+  data1$redline <- redline
+
+  mean_redline <- data1 %>%
+    group_by(Group, position) %>%
+    mutate(mean = mean(redline)) %>%
+    ungroup()
+
+  data1$redline <- mean_redline$mean
+
+  p <- ggplot(data = data1, aes(x = position, y = Y))
+
+  group_label <- c("0" = "Group1", "1" = "Group2")
+
+  F.plot <- p + geom_line(aes(x = position, y = Y, group = series)) +
+    geom_line(aes(x = position, y = blueline, color = "truth"), data = data1, size = 1.3) +
+    geom_line(aes(x = position, y = redline, color = "estimate"),
+      data = data1, size = 1.3
+    ) +
+    scale_color_manual(name = "", values = c("truth" = "blue", "estimate" = "red")) +
+    facet_grid(. ~ Group, labeller = as_labeller(group_label))
+
+  p <- ggplot(data = data1, aes(x = position, y = Y))
+
+  group_label <- c("0" = "Group1", "1" = "Group2")
+
+  data1.dedup <- data1[!duplicated(data1$series), ]
+  data1.dedup <- data1.dedup[, c("Group", "phi", "U2")]
+  colnames(data1.dedup)[2:3] <- c("truth", "estimate")
+
+  p.U2 <- ggplot(data1.dedup, aes(x = estimate, y = truth)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1) +
+    facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
+    ylab("\u03A6 (random intercept)")
+
+
+  Dico.norm <- CreationBases(data1$position)
+
+  t.cont <- seq(min(t.obs), max(t.obs), by = cont.t)
+  values <- f(t.cont, A = 1, omega = 60) - mean(f(t.obs, A = 1, omega = 60))
+
+  if (same) {
+    values.1 <- values
+  } else {
+    values.1 <- f(t.cont, A = 1.5, omega = 110) - mean(f(t.obs, A = 1.5, omega = 110))
+  }
+
 
 
   df.F <- data.frame(
@@ -235,27 +559,44 @@ plot.fit <- function(list.EM.out, data, same = FALSE) {
   df.F$f.overall <- df.F$f + df.F$X + df.F$phi
   df.F$F.fit.overall <- df.F$F.fit + df.F$X.fit + df.F$U2
 
-
   p.F.overall <- p + geom_line(aes(x = position, y = Y, group = series)) +
     geom_line(aes(x = t, y = f.overall, color = "truth"), size = 1.3, data = df.F) +
     geom_line(aes(x = t, y = F.fit.overall, color = "estimate"), data = df.F, size = 1.3) +
-    scale_color_manual(name = "Legend", values = c("truth" = "blue", "estimate" = "red")) +
+    scale_color_manual(name = "", values = c("truth" = "blue", "estimate" = "red")) +
     facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
-    ylab("Y") + xlab("Time") + geom_point(aes(x = t, y = f.overall), col = "blue", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
-    geom_point(aes(x = t, y = F.fit.overall), col = "red", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
-    scale_x_continuous(breaks = t.obs)
+    ylab("Y") + xlab("Time") +
+    scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 52)) + theme(
+      legend.text = element_text(size = 12),
+      strip.text = element_text(size = 12),
+      axis.title.x = element_text(size = 12),
+      axis.title.y = element_text(size = 12)
+    )
+
+
 
   p.F <- ggplot(aes(x = t, y = f), data = df.F) +
     geom_line(aes(x = t, y = f, color = "truth"), size = 1.3, data = df.F) +
     geom_line(aes(x = t, y = F.fit, color = "estimate"), data = df.F, size = 1.3) +
-    scale_color_manual(name = "Legend", values = c("truth" = "blue", "estimate" = "red")) +
+    scale_color_manual(name = "", values = c("truth" = "blue", "estimate" = "red")) +
     facet_grid(. ~ Group, labeller = as_labeller(group_label)) +
     ylab("Y") +
     xlab("Time") +
-    geom_point(aes(x = t, y = f), col = "blue", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
-    geom_point(aes(x = t, y = F.fit), col = "red", data = df.F[df.F$t %in% t.obs, ], size = 2.5) +
     ylim(c(-1.5, 10)) +
-    scale_x_continuous(breaks = t.obs)
+    scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 52)) +
+    theme(
+      legend.text = element_text(size = 12),
+      strip.text = element_text(size = 12),
+      axis.title.x = element_text(size = 12),
+      axis.title.y = element_text(size = 13)
+    ) +
+    ylab("f(time)")
 
-  ggarrange(p.F.overall, p.F, ncol = 1, nrow = 2, common.legend = TRUE, legend = "bottom")
+
+  if (!legend) {
+    p.F.overall <- p.F.overall + theme(legend.position = "none")
+    p.F <- p.F + theme(legend.position = "none")
+    ggarrange(p.F.overall, p.F, ncol = 1, nrow = 2)
+  } else {
+    ggarrange(p.F.overall, p.F, ncol = 1, nrow = 2, common.legend = TRUE, legend = "bottom")
+  }
 }
